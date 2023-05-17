@@ -124,7 +124,7 @@ class SQLDatabaseChain(Chain):
                     sql_cmd
                 )  # output: sql generation (no checker)
                 intermediate_steps.append({"sql_cmd": sql_cmd})  # input: sql exec
-                result = self.database.run(sql_cmd)
+                result, sql_columns = self.database.run(sql_cmd)
                 intermediate_steps.append(str(result))  # output: sql exec
             else:
                 query_checker_prompt = self.query_checker_prompt or PromptTemplate(
