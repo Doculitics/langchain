@@ -133,7 +133,7 @@ class SQLDatabase:
         """Information about all tables in the database."""
         return self.get_table_info()
 
-    def get_table_info(self, table_names: Optional[List[str]] = None) -> str:
+    def get_table_info(self, table_names: Optional[List[str]] = None, columns=None) -> str:
         """Get information about specified tables.
 
         Follows best practices as specified in: Rajkumar et al, 2022
@@ -164,6 +164,13 @@ class SQLDatabase:
                 continue
 
             # add create table command
+            
+            if columns:
+                new_columns = []
+                for column in table.columns:
+                    if column.name in columns:
+                        new_columns.append(column)
+                table.columns = new_columns
             create_table = str(CreateTable(table).compile(self._engine))
             table_info = f"{create_table.rstrip()}"
             has_extra_info = (
@@ -174,7 +181,7 @@ class SQLDatabase:
             if self._indexes_in_table_info:
                 table_info += f"\n{self._get_table_indexes(table)}\n"
             if self._sample_rows_in_table_info:
-                table_info += f"\n{self._get_sample_rows(table)}\n"
+                table_info += f"\n{self._get_sample_rows(self, table, columns)}\n"
             if has_extra_info:
                 table_info += "*/"
             tables.append(table_info)
@@ -186,10 +193,12 @@ class SQLDatabase:
         indexes_formatted = "\n".join(map(_format_index, indexes))
         return f"Table Indexes:\n{indexes_formatted}"
 
-    def _get_sample_rows(self, table: Table) -> str:
+    def _get_sample_rows(self, table: Table, column_names) -> str:
         # build the select command
-        command = select(table).limit(self._sample_rows_in_table_info)
-
+        if column_names:
+            command = select(*[table.c[name] for name in column_names]).limit(self._sample_rows_in_table_info)
+        else:
+            command = select(table).limit(self._sample_rows_in_table_info)
         # save the columns in string format
         columns_str = "\t".join([col.name for col in table.columns])
 
@@ -216,16 +225,18 @@ class SQLDatabase:
             f"{sample_rows_str}"
         )
 
-    def run(self, command: str, fetch: str = "all") -> str:
+    def run(self, command: str, fetch: str = "all") -> tuple[str, list]:
         """Execute a SQL command and return a string representing the results.
 
         If the statement returns rows, a string of the results is returned.
         If the statement returns no rows, an empty string is returned.
         """
+        columns = []
         with self._engine.begin() as connection:
             if self._schema is not None:
                 connection.exec_driver_sql(f"SET search_path TO {self._schema}")
             cursor = connection.execute(text(command))
+            columns = cursor.keys()
             if cursor.returns_rows:
                 if fetch == "all":
                     result = cursor.fetchall()
@@ -233,8 +244,8 @@ class SQLDatabase:
                     result = cursor.fetchone()[0]  # type: ignore
                 else:
                     raise ValueError("Fetch parameter must be either 'one' or 'all'")
-                return str(result)
-        return ""
+                return str(result), columns
+        return "", columns
 
     def get_table_info_no_throw(self, table_names: Optional[List[str]] = None) -> str:
         """Get information about specified tables.
