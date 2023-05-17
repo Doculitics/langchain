@@ -111,6 +111,7 @@ class SQLDatabaseChain(Chain):
             "stop": ["\nSQLResult:"],
         }
         intermediate_steps: List = []
+        sql_columns: List = []
         try:
             intermediate_steps.append(llm_inputs)  # input: sql generation
             sql_cmd = self.llm_chain.predict(
@@ -148,7 +149,7 @@ class SQLDatabaseChain(Chain):
                 intermediate_steps.append(
                     {"sql_cmd": checked_sql_command}
                 )  # input: sql exec
-                result = self.database.run(checked_sql_command)
+                result, sql_columns = self.database.run(checked_sql_command)
                 intermediate_steps.append(str(result))  # output: sql exec
                 sql_cmd = checked_sql_command
 
@@ -171,6 +172,7 @@ class SQLDatabaseChain(Chain):
                 intermediate_steps.append(final_result)  # output: final answer
                 _run_manager.on_text(final_result, color="green", verbose=self.verbose)
             chain_result: Dict[str, Any] = {self.output_key: final_result}
+            chain_result["sql_columns"] = sql_columns
             if self.return_intermediate_steps:
                 chain_result[INTERMEDIATE_STEPS_KEY] = intermediate_steps
             return chain_result
